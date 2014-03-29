@@ -119,9 +119,10 @@ end
 
 def listprefixes_cmd_callback data, buf, args
   str = @prefixes.to_s
-  Weechat.print Weechat.current_buffer, str
+  Weechat.print '', str
   Weechat::WEECHAT_RC_OK
 end
+
 def modifier_callback data, modifier, modifier_data, string
   #Weechat.print '', "current server has modifiers: #{@prefixes[modifier_data]}"
   #Weechat.print '', string
@@ -150,8 +151,4 @@ def modifier_callback data, modifier, modifier_data, string
   end
 
   string
-end
-
-def form_irc_str cmd, tgt, payload
-  "#{cmd} #{tgt} :#{payload}"
 end
