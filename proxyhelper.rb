@@ -79,11 +79,15 @@ def addprefix_cmd_callback data, buf, args
     Weechat.print '', "#{SCRIPT_NAME} error: not enough arguments"
     return Weechat::WEECHAT_RC_ERROR
   end
-  @prefixes[srv].each_key do |p|
-    if p.start_with? pfx
-      Weechat.print Weechat.current_buffer, "Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
-      return Weechat::WEECHAT_RC_ERROR
+  if @prefixes[srv]
+    @prefixes[srv].each_key do |p|
+      if p.start_with? pfx
+        Weechat.print Weechat.current_buffer, "Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
+        return Weechat::WEECHAT_RC_ERROR
+      end
     end
+  else
+    @prefixes[srv] = {}
   end
   if Weechat.buffer_search('irc', "server.#{dest}").empty?
     Weechat.print Weechat.current_buffer, "#{SCRIPT_NAME} warning: unable to find that destination buffer, things might not work as intended"
