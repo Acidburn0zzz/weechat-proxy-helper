@@ -122,7 +122,7 @@ def delprefix_cmd_callback data, buf, args
 end
 
 def listprefixes_cmd_callback data, buf, args
-  str = @prefixes.to_s
+  str = JSON.pretty_generate @prefixes
   Weechat.print '', str
   Weechat::WEECHAT_RC_OK
 end
