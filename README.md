@@ -18,6 +18,7 @@ on a buffer on the server you wish to remove a prefix mapping from
 the prefixes are a simple string match and may be multi-character
 
 rylee has example prefixes `\ => nexus, [ => dawn, n\ => nexus, dawn\ => dawn`
+
 in `<server: rylee> \Text`
 out `<server: nexus> Text`
 
