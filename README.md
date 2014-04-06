@@ -34,3 +34,4 @@ Caveats
 - Trailing spaces after prefixes are not removed.
 - You are prevented from adding prefixes that will conflict with other prefixes (e.g. adding pfx `\` when you already have a pfx `\Dawn`
 - ___PREFIXES ARE PER-SERVER.___
+- ___PREFIXES ARE CASE-SENSITIVE.___
