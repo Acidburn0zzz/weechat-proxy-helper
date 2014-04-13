@@ -71,18 +71,18 @@ def addprefix_cmd_callback data, buf, args
   #Weechat.print '', @prefixes.to_s
   srv = Weechat.buffer_get_string buf, 'localvar_server'
   if srv.empty?
-    Weechat.print '', "#{SCRIPT_NAME} error: unable to find the server of the current buffer"
+    Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
     return Weechat::WEECHAT_RC_ERROR
   end
   pfx, dest = args.split.take 2
   if pfx.nil? or dest.nil?
-    Weechat.print '', "#{SCRIPT_NAME} error: not enough arguments"
+    Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
     return Weechat::WEECHAT_RC_ERROR
   end
   if @prefixes[srv]
     @prefixes[srv].each_key do |p|
       if p.start_with? pfx
-        Weechat.print Weechat.current_buffer, "Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
+        Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
         return Weechat::WEECHAT_RC_ERROR
       end
     end
@@ -90,7 +90,7 @@ def addprefix_cmd_callback data, buf, args
     @prefixes[srv] = {}
   end
   if Weechat.buffer_search('irc', "server.#{dest}").empty?
-    Weechat.print Weechat.current_buffer, "#{SCRIPT_NAME} warning: unable to find that destination buffer, things might not work as intended"
+    Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}unable to find that destination buffer, things might not work as intended"
   end
   Weechat.print '', "Added prefix #{pfx} on #{srv} mapping to #{dest}"
   @prefixes[srv][pfx] = dest
@@ -102,19 +102,19 @@ end
 def delprefix_cmd_callback data, buf, args
   srv = Weechat.buffer_get_string buf, 'localvar_server'
   if srv.empty?
-    Weechat.print '', "#{SCRIPT_NAME} error: unable to find the server of the current buffer"
+    Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
     return Weechat::WEECHAT_RC_ERROR
   end
   pfx = args.split.first
   if pfx.nil?
-    Weechat.print '', "#{SCRIPT_NAME} error: not enough arguments"
+    Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
     return Weechat::WEECHAT_RC_ERROR
   end
   if @prefixes[srv][pfx]
     old_dest = @prefixes[srv].delete pfx
     Weechat.print Weechat.current_buffer, "prefix #{pfx} mapping to #{old_dest} removed"
   else
-    Weechat.print Weechat.current_buffer, "prefix #{pfx} not found for the current server"
+    Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}prefix #{pfx} not found for the current server"
   end
   save_prefixes
 
@@ -139,7 +139,7 @@ def modifier_callback data, modifier, modifier_data, string
   return string unless dest.start_with? '#'
 
   if srv.empty?
-    Weechat.print '', "#{SCRIPT_NAME} error: unable to find the server of the current buffer"
+    Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
     return Weechat::WEECHAT_RC_ERROR
   end
 
