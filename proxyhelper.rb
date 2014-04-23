@@ -18,7 +18,7 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-SCRIPT_NAME = 'proxyhelper'
+SCRIPT_NAME = 'proxyhelper-fifo'
 SCRIPT_AUTHOR = 'Rylee Fowler'
 SCRIPT_VERSION = '0.0.1'
 SCRIPT_LICENSE = 'MIT'
@@ -41,8 +41,8 @@ def weechat_init
     SCRIPT_DESC, '', ''
 
   Weechat.hook_command 'addprefix', 'Add a new prefix for the current server.',
-    'addprefix <prefix> <server>',
-    'addprefix <prefix> <server> - On the current server, a message beginning with <prefix> will instead be sent through <server> if the current channel exists on <server>.',
+    'addprefix <prefix> <remote_server_name> <directory>',
+    'addprefix <prefix> <remote_server_name> <directory> - On the current server, a message beginning with <prefix> will instead be sent through the fifo in <directory> to the server named <remote_server_name>',
     '%(irc_servers)',
     'addprefix_cmd_callback',
     ''
@@ -74,8 +74,8 @@ def addprefix_cmd_callback data, buf, args
     Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
     return Weechat::WEECHAT_RC_ERROR
   end
-  pfx, dest = args.split.take 2
-  if pfx.nil? or dest.nil?
+  pfx, remote_server, dest = args.split ' ', 3
+  if pfx.nil? or dest.nil? or remote_server.nil?
     Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
     return Weechat::WEECHAT_RC_ERROR
   end
@@ -89,11 +89,10 @@ def addprefix_cmd_callback data, buf, args
   else
     @prefixes[srv] = {}
   end
-  if Weechat.buffer_search('irc', "server.#{dest}").empty?
-    Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}unable to find that destination buffer, things might not work as intended"
-  end
   Weechat.print '', "Added prefix #{pfx} on #{srv} mapping to #{dest}"
-  @prefixes[srv][pfx] = dest
+  @prefixes[srv][pfx] = []
+  @prefixes[srv][pfx][0] = dest
+  @prefixes[srv][pfx][1] = remote_server
   save_prefixes
 
   Weechat::WEECHAT_RC_OK
@@ -146,10 +145,9 @@ def modifier_callback data, modifier, modifier_data, string
   #Weechat.print '', "cmd: #{command}, dest: #{dest}, text: #{text}"
   @prefixes[srv].each_pair do |k, v|
     if text.start_with? k
-      buf = Weechat.buffer_search 'irc', "#{v}.#{dest}"
-      return string if buf.empty?
-      text.sub! k, ''
-      Weechat.command buf, text
+      File.open(Dir["#{v.first}/weechat_fifo_*"].first, 'w') do |fifo|
+        fifo.puts "irc.#{v.last}.#{dest} *#{text.sub k, ''}"
+      end
       return ""
     end
   end
