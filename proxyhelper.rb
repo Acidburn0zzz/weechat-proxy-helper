@@ -68,7 +68,6 @@ def weechat_init
 end
 
 def addprefix_cmd_callback data, buf, args
-  #Weechat.print '', @prefixes.to_s
   srv = Weechat.buffer_get_string buf, 'localvar_server'
   if srv.empty?
     Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
