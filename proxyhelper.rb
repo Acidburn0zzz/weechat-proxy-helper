@@ -127,10 +127,9 @@ def listprefixes_cmd_callback data, buf, args
 end
 
 def modifier_callback data, modifier, modifier_data, string
-  #Weechat.print '', "current server has modifiers: #{@prefixes[modifier_data]}"
-  #Weechat.print '', string
   srv = Weechat.buffer_get_string Weechat.current_buffer, 'localvar_server'
   return string unless @prefixes[srv] and @prefixes[srv].keys
+
   match = string.match OUTGOING_REGEX
   command = match[:command]
   dest    = match[:destination]
@@ -142,13 +141,12 @@ def modifier_callback data, modifier, modifier_data, string
     return Weechat::WEECHAT_RC_ERROR
   end
 
-  #Weechat.print '', "cmd: #{command}, dest: #{dest}, text: #{text}"
   @prefixes[srv].each_pair do |k, v|
     if text.start_with? k
       File.open(Dir["#{v.first}/weechat_fifo_*"].first, 'w') do |fifo|
         fifo.puts "irc.#{v.last}.#{dest} *#{text.sub k, ''}"
       end
-      return ""
+      return ''
     end
   end
 
