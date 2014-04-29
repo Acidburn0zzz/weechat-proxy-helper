@@ -18,9 +18,9 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 
-SCRIPT_NAME = 'proxyhelper-fifo'
+SCRIPT_NAME = 'proxyhelper'
 SCRIPT_AUTHOR = 'Rylee Fowler'
-SCRIPT_VERSION = '0.0.1'
+SCRIPT_VERSION = '0.0.2'
 SCRIPT_LICENSE = 'MIT'
 SCRIPT_DESC = 'script to help proxying and stuff'
 OUTGOING_REGEX = /^(?<command>[^ ]+)( (?<destination>[^:][^ ]*))?( :(?<text>.*))?$/
@@ -30,84 +30,133 @@ def load_prefixes
   File.open(@data_file_path) do |f|
     @prefixes = JSON.load f
   end
+  if @prefixes.first[1].first[1].is_a?(String) || @prefixes.first[1].first[1].is_a?(Array)
+    convert_prefixes
+  end
 end
 def save_prefixes
   File.open(@data_file_path, 'w') do |f|
     JSON.dump @prefixes, f
   end
 end
+def convert_prefixes
+  @prefixes.each do |server, prefixes|
+    prefixes.each do |pfx, destination|
+      type = nil
+      if destination.is_a? String
+        type = 'server'
+      elsif destination.is_a? Array
+        type = 'fifo'
+      else
+        return Weechat::WEECHAT_RC_ERROR
+      end
+      prefixes[pfx] = {'destination' => destination, 'type' => type}
+    end
+  end
+end
+
 def weechat_init
   Weechat.register SCRIPT_NAME, SCRIPT_AUTHOR,  SCRIPT_VERSION, SCRIPT_LICENSE,
     SCRIPT_DESC, '', ''
 
-  Weechat.hook_command 'addprefix', 'Add a new prefix for the current server.',
-    'addprefix <prefix> <remote_server_name> <directory>',
-    'addprefix <prefix> <remote_server_name> <directory> - On the current server, a message beginning with <prefix> will instead be sent through the fifo in <directory> to the server named <remote_server_name>',
-    '%(irc_servers)',
-    'addprefix_cmd_callback',
+  Weechat.hook_command 'prefix', 'Manage prefix mappings.',
+    'add server <prefix> <destination_server> | add fifo <prefix> <remote_server_name> <directory> | del <prefix> | list',
+    [
+      'add server <prefix> <destination_server>',
+      '  adds an in-weechat prefix mapping from <prefix> on the current server pointing at <destination_server>',
+      'add fifo <prefix> <remote_server_name> <directory>',
+      '  adds a FIFO mapping from <prefix> on the current server pointing at <remote_server_name> that has a FIFO located in <directory>',
+      '  note: this takes the *directory* where the FIFO is located, not the location of the FIFO itself',
+      '  it will look for a file matching the glob pattern "weechat_fifo_*" and take the first match',
+      'del <prefix>',
+      '  deletes the mapping from <prefix> to any FIFO or server mappings it has',
+      'list',
+      '  lists all prefix mappings on all servers'
+    ].join("\n"),
+    [
+      'add server <prefix> %(irc_servers)',
+      'add fifo <prefix> <remote_server_name> <directory>',
+      'del <prefix>',
+      'list'
+    ].join(' || '),
+    'cmd_callback',
     ''
-  Weechat.hook_command 'listprefixes', 'list all configured prefixes',
-    'listprefixes',
-    'listprefixes - list all configured prefixes',
-    '',
-    'listprefixes_cmd_callback',
-    ''
-  Weechat.hook_command 'delprefix', 'delete a prefix on the current server',
-    'delprefix <prefix>',
-    'delprefix <prefix> - Delete the given prefix from the current server',
-    '',
-    'delprefix_cmd_callback',
-    ''
-  Weechat.hook_modifier 'irc_out1_privmsg', 'modifier_callback', ''
 
-  @prefixes = Hash.new { |h, k| h[k] = {} }
-  @data_file_path = "#{Weechat.info_get 'weechat_dir', ''}/#{SCRIPT_NAME}.conf"
-  load_prefixes if File.exists? @data_file_path
+    Weechat.hook_modifier 'irc_out1_privmsg', 'modifier_callback', ''
 
-  Weechat::WEECHAT_RC_OK
+    @prefixes = Hash.new { |h, k| h[k] = {} }
+    @data_file_path = "#{Weechat.info_get 'weechat_dir', ''}/#{SCRIPT_NAME}.conf"
+    load_prefixes if File.exists? @data_file_path
+
+    Weechat::WEECHAT_RC_OK
 end
 
-def addprefix_cmd_callback data, buf, args
+def cmd_callback data, buf, args
+  cmd, param = args.split /\s/, 2
   srv = Weechat.buffer_get_string buf, 'localvar_server'
-  if srv.empty?
-    Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
-    return Weechat::WEECHAT_RC_ERROR
-  end
-  pfx, remote_server, dest = args.split ' ', 3
-  if pfx.nil? or dest.nil? or remote_server.nil?
-    Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
-    return Weechat::WEECHAT_RC_ERROR
-  end
-  if @prefixes[srv]
-    @prefixes[srv].each_key do |p|
-      if p.start_with? pfx
-        Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
+  case cmd.downcase
+  when 'add'
+    if param.nil?
+      Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Now that's just not right. That command needs parameters."
+      return Weechat::WEECHAT_RC_ERROR
+    end
+    if srv.empty?
+      Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
+      return Weechat::WEECHAT_RC_ERROR
+    end
+    type, rest = param.split /\s/, 2
+    case type.downcase
+    when 'server'
+      pfx, dest = rest.split(/\s/, 2)
+      if pfx.nil? or dest.nil?
+        Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
         return Weechat::WEECHAT_RC_ERROR
       end
+
+      add_prefix_server srv, pfx, dest
+    when 'fifo'
+      Weechat.print '', rest
+      pfx, remote_server, dest = rest.split(/\s/, 3)
+      if pfx.nil? or dest.nil? or remote_server.nil?
+        Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
+        return Weechat::WEECHAT_RC_ERROR
+      end
+      add_prefix_fifo srv, pfx, remote_server, dest
     end
-  else
-    @prefixes[srv] = {}
+
+  when 'del'
+    if param.nil?
+      Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Now that's just not right. That command needs parameters."
+      return Weechat::WEECHAT_RC_ERROR
+    end
+    if srv.empty?
+      Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
+      return Weechat::WEECHAT_RC_ERROR
+    end
+
+    pfx = param.split.first
+    if pfx.nil?
+      Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
+      return Weechat::WEECHAT_RC_ERROR
+    end
+
+    delete_prefix srv, pfx
+
+  when 'list'
+    list_prefixes
+
   end
-  Weechat.print '', "Added prefix #{pfx} on #{srv} mapping to #{dest}"
-  @prefixes[srv][pfx] = []
-  @prefixes[srv][pfx][0] = dest
-  @prefixes[srv][pfx][1] = remote_server
-  save_prefixes
+
+end
+
+def list_prefixes
+  str = JSON.pretty_generate @prefixes
+  Weechat.print '', str
 
   Weechat::WEECHAT_RC_OK
 end
 
-def delprefix_cmd_callback data, buf, args
-  srv = Weechat.buffer_get_string buf, 'localvar_server'
-  if srv.empty?
-    Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
-    return Weechat::WEECHAT_RC_ERROR
-  end
-  pfx = args.split.first
-  if pfx.nil?
-    Weechat.print '', "#{Weechat.prefix 'error'}not enough arguments"
-    return Weechat::WEECHAT_RC_ERROR
-  end
+def delete_prefix srv, pfx
   if @prefixes[srv][pfx]
     old_dest = @prefixes[srv].delete pfx
     Weechat.print Weechat.current_buffer, "prefix #{pfx} mapping to #{old_dest} removed"
@@ -119,10 +168,69 @@ def delprefix_cmd_callback data, buf, args
   Weechat::WEECHAT_RC_OK
 end
 
-def listprefixes_cmd_callback data, buf, args
-  str = JSON.pretty_generate @prefixes
-  Weechat.print '', str
+def add_prefix_fifo srv, pfx, remote_server, dest
+  if @prefixes[srv]
+    @prefixes[srv].each_key do |p|
+      if p.start_with? pfx
+        Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
+        return Weechat::WEECHAT_RC_ERROR
+      end
+    end
+  else
+    @prefixes[srv] = {}
+  end
+  Weechat.print '', "Added prefix #{pfx} on #{srv} mapping to #{dest}"
+  @prefixes[srv][pfx] = {}
+  @prefixes[srv][pfx]['destination'] = []
+  @prefixes[srv][pfx]['destination'][0] = dest
+  @prefixes[srv][pfx]['destination'][1] = remote_server
+  @prefixes[srv][pfx]['type'] = 'fifo'
+  save_prefixes
+
   Weechat::WEECHAT_RC_OK
+end
+
+def add_prefix_server srv, pfx, dest
+  if @prefixes[srv]
+    @prefixes[srv].each_key do |p|
+      if p.start_with? pfx
+        Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}Attempted to add the prefix #{pfx} but it conflicted with #{p} which maps to #{@prefixes[srv][p]}!"
+        return Weechat::WEECHAT_RC_ERROR
+      end
+    end
+  else
+    @prefixes[srv] = {}
+  end
+  if Weechat.buffer_search('irc', "server.#{dest}").empty?
+    Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}unable to find that destination buffer, things might not work as intended"
+  end
+  Weechat.print '', "Added prefix #{pfx} on #{srv} mapping to #{dest}"
+  @prefixes[srv][pfx] = {}
+  @prefixes[srv][pfx]['destination'] = dest
+  @prefixes[srv][pfx]['type'] = 'server'
+  save_prefixes
+
+  Weechat::WEECHAT_RC_OK
+end
+
+def send_msg dest, chan, text
+  case dest['type'].downcase
+  when 'server'
+    buf = Weechat.buffer_search 'irc', "#{dest['destination']}.#{chan}"
+    if buf.empty?
+      Weechat.print Weechat.current_buffer, "#{Weechat.prefix 'error'}unable to find that destination buffer, is the other connection in this channel?"
+      return Weechat::WEECHAT_RC_OK
+    end
+    Weechat.command buf, text
+
+    Weechat::WEECHAT_RC_OK
+  when 'fifo'
+    File.open(Dir["#{dest['destination'].first}/weechat_fifo_*"].first, 'w') do |fifo|
+      fifo.puts "irc.#{dest['destination'].last}.#{chan} *#{text}"
+    end
+
+    Weechat::WEECHAT_RC_OK
+  end
 end
 
 def modifier_callback data, modifier, modifier_data, string
@@ -131,20 +239,18 @@ def modifier_callback data, modifier, modifier_data, string
 
   match = string.match OUTGOING_REGEX
   command = match[:command]
-  dest    = match[:destination]
+  chan    = match[:destination]
   text    = match[:text]
-  return string unless dest.start_with? '#'
+  return string unless chan.start_with? '#'
 
   if srv.empty?
     Weechat.print '', "#{Weechat.prefix 'error'}unable to find the server of the current buffer"
     return Weechat::WEECHAT_RC_ERROR
   end
 
-  @prefixes[srv].each_pair do |k, v|
-    if text.start_with? k
-      File.open(Dir["#{v.first}/weechat_fifo_*"].first, 'w') do |fifo|
-        fifo.puts "irc.#{v.last}.#{dest} *#{text.sub k, ''}"
-      end
+  @prefixes[srv].each_pair do |prefix, destination|
+    if text.start_with? prefix
+      send_msg destination, chan, text.sub(prefix, '')
       return ''
     end
   end
